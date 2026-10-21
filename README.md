@@ -47,6 +47,8 @@ https://github.com/XiaoMinghui/UnityStreamVideoPlayer.git?path=/Packages/com.xmh
 把 `Texture` 交给 RawImage 或材质显示，同时应用 `TextureCoordinates` 修正 D3D11 视频纹理的上下方向。RawImage 设置 `uvRect`；材质设置纹理 scale=(1,-1)、offset=(0,1)。示例使用 IMGUI，所以包本身不依赖 UGUI/URP。
 需要直接控制生命周期时使用 `VideoStreamSession`，在 Unity 主线程创建、调用 `Render()`、查询并 `Dispose()`。
 每个实例对应独立连接、解码器和输出纹理。输出大小固定，可指定为小窗口分辨率；源分辨率变化后 GPU 处理器会重建。
+多路显示可创建 `VideoStreamRenderBatch(sessions)`，每帧调用一次 `batch.Render()`，将各路渲染事件合并到一个可复用的 Unity 命令缓冲中。批次不拥有会话，释放时先 Dispose 批次，再释放会话；增加或替换会话后重建批次。视频墙示例默认使用批量提交。
+`TryGetPerformanceStatistics` 提供输入视图创建次数、同步争用及 CPU 侧提交耗时，适合定位性能瓶颈。解码输入视图与不变的色彩配置会复用；纹理池或分辨率改变后重建缓存。
 不要在场景、预制体或提交的配置中保存摄像头密码。
 
 ## 当前边界

@@ -13,7 +13,10 @@ namespace StreamVideoPlayer.Samples
         public int outputWidth = 640, outputHeight = 360;
         public string LastError { get; private set; }
         public IReadOnlyList<VideoStreamSession> Sessions => sessions;
+        public bool BatchRendering { get; set; } = true;
+        public double RenderSubmissionCpuMs { get; private set; }
         private readonly List<VideoStreamSession> sessions = new List<VideoStreamSession>();
+        private VideoStreamRenderBatch renderBatch;
         private string input;
         private string[] labels = Array.Empty<string>();
         private bool[] visible = Array.Empty<bool>();
@@ -37,11 +40,13 @@ namespace StreamVideoPlayer.Samples
                 }
                 previousTime = Time.realtimeSinceStartup;
                 nextUpdate = previousTime + 0.5f;
+                renderBatch = new VideoStreamRenderBatch(sessions);
             }
             catch (Exception ex) { LastError = ex.Message; Stop(); }
         }
         public void Stop()
         {
+            renderBatch?.Dispose(); renderBatch = null;
             foreach (var session in sessions) session.RequestStop();
             foreach (var session in sessions) session.Dispose();
             sessions.Clear();
@@ -50,7 +55,10 @@ namespace StreamVideoPlayer.Samples
         {
             try
             {
-                foreach (var session in sessions) session.Render();
+                long begin = System.Diagnostics.Stopwatch.GetTimestamp();
+                if (BatchRendering) renderBatch?.Render();
+                else foreach (var session in sessions) session.Render();
+                RenderSubmissionCpuMs += (System.Diagnostics.Stopwatch.GetTimestamp() - begin) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
                 float now = Time.realtimeSinceStartup;
                 if (now < nextUpdate) return;
                 for (int i = 0; i < sessions.Count; ++i)

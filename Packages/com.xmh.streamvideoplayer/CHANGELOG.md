@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Reuse D3D11 video input views per decoder texture/array slice and cache unchanged color-space state. Rebuild caches when the decoder pool or processor changes.
+- Add `VideoStreamRenderBatch` and use it in the video wall: record session events once and submit one Unity command buffer per frame. Closed session handles remain safe to skip.
+- Add optional CPU submission/contention counters without changing ABI 1 or existing struct layouts; extend native and Unity benchmarks with diagnostics and an individual-render A/B switch.
+- Cover batched disposal/reopen, paused-renderer latest-frame behavior, view reuse, and native resolution-change playback.
+
 ## 0.1.0-preview.3
 
 - Add conservative RTSP H.264 SDP fast start, with the original probing path retained when parameters are missing.

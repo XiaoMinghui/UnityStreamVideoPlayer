@@ -82,7 +82,8 @@ int main(int argc, char** argv) {
         const auto settle = Clock::now();
         while (seconds(Clock::now() - settle) < 2) { tick(); std::this_thread::sleep_for(std::chrono::milliseconds(16)); }
         std::vector<SvpVideoStats> before;
-        for (auto& session : sessions) before.push_back(session->stats());
+        std::vector<SvpVideoPerformance> performanceBefore;
+        for (auto& session : sessions) { before.push_back(session->stats()); performanceBefore.push_back(session->performance()); }
         const auto measureStart = Clock::now();
         auto previous = measureStart, next = measureStart;
         const double cpuStart = cpuSeconds();
@@ -110,7 +111,8 @@ int main(int argc, char** argv) {
         const double cpu = cpuSeconds() - cpuStart;
         std::vector<SvpVideoStats> after;
         std::vector<SvpVideoTimings> timings;
-        for (auto& session : sessions) { after.push_back(session->stats()); timings.push_back(session->timings()); }
+        std::vector<SvpVideoPerformance> performanceAfter;
+        for (auto& session : sessions) { after.push_back(session->stats()); timings.push_back(session->timings()); performanceAfter.push_back(session->performance()); }
         const auto stopStart = Clock::now();
         for (auto& session : sessions) session->requestStop();
         sessions.clear();
@@ -128,6 +130,7 @@ int main(int argc, char** argv) {
             << ",\n  \"stopAllMs\": " << stopMs << ",\n  \"streams\": [\n";
         for (int i = 0; i < count; ++i) {
             const auto& a = after[i]; const auto& b = before[i]; const auto& t = timings[i];
+            const auto& p = performanceAfter[i]; const auto& q = performanceBefore[i];
             require(a.presented_frames > b.presented_frames, "Stream stopped presenting during benchmark");
             report << "    {\"index\": " << i << ", \"width\": " << a.width << ", \"height\": " << a.height
                 << ", \"decodedFps\": " << (a.decoded_frames - b.decoded_frames) / measured
@@ -136,7 +139,13 @@ int main(int argc, char** argv) {
                 << ", \"deviceReadyMs\": " << t.device_ready_us / 1000.0 << ", \"inputOpenMs\": " << t.input_open_us / 1000.0
                 << ", \"streamInfoMs\": " << t.stream_info_us / 1000.0 << ", \"decoderReadyMs\": " << t.decoder_ready_us / 1000.0
                 << ", \"firstDecodedMs\": " << t.first_decoded_us / 1000.0 << ", \"firstPresentedMs\": " << t.first_presented_us / 1000.0
-                << ", \"skippedProbe\": " << t.skipped_stream_probe << "}" << (i + 1 == count ? "\n" : ",\n");
+                << ", \"skippedProbe\": " << t.skipped_stream_probe
+                << ", \"writerBusyDrops\": " << p.writer_busy_drops - q.writer_busy_drops
+                << ", \"readerBusySkips\": " << p.reader_busy_skips - q.reader_busy_skips
+                << ", \"inputViewCreations\": " << p.input_view_creations - q.input_view_creations
+                << ", \"conversionCpuMeanUs\": " << static_cast<double>(p.conversion_cpu_us - q.conversion_cpu_us) / (std::max)(uint64_t{1}, p.conversion_attempts - q.conversion_attempts)
+                << ", \"presentationCpuMeanUs\": " << static_cast<double>(p.presentation_cpu_us - q.presentation_cpu_us) / (std::max)(uint64_t{1}, p.present_calls - q.present_calls)
+                << "}" << (i + 1 == count ? "\n" : ",\n");
         }
         report << "  ]\n}\n";
         require(report.good(), "Writing benchmark report failed");

@@ -24,6 +24,17 @@ typedef struct SvpVideoTimings {
     uint32_t skipped_stream_probe;
     uint32_t reserved;
 } SvpVideoTimings;
+// Cumulative CPU-side submission diagnostics, not GPU execution time or optical latency.
+typedef struct SvpVideoPerformance {
+    uint64_t conversion_attempts;
+    uint64_t converted_frames;
+    uint64_t writer_busy_drops;
+    uint64_t reader_busy_skips;
+    uint64_t input_view_creations;
+    uint64_t conversion_cpu_us;
+    uint64_t present_calls;
+    uint64_t presentation_cpu_us;
+} SvpVideoPerformance;
 SVP_API uint32_t SVP_CALL svp_video_abi_version(void);
 // UTF-8 source. A live BGRA8 Unity render texture is retained until close.
 SVP_API int32_t SVP_CALL svp_video_open(const char* url, void* texture, int32_t* handle);
@@ -32,6 +43,7 @@ SVP_API int32_t SVP_CALL svp_video_close(int32_t handle);
 SVP_API int32_t SVP_CALL svp_video_request_stop(int32_t handle);
 SVP_API int32_t SVP_CALL svp_video_get_stats(int32_t handle, SvpVideoStats* stats, uint32_t size);
 SVP_API int32_t SVP_CALL svp_video_get_timings(int32_t handle, SvpVideoTimings* timings, uint32_t size);
+SVP_API int32_t SVP_CALL svp_video_get_performance(int32_t handle, SvpVideoPerformance* performance, uint32_t size);
 // Error text contains stage + numeric result, never the source URL/credentials.
 SVP_API int32_t SVP_CALL svp_video_get_error(int32_t handle, char* buffer, uint32_t size);
 SVP_API void* SVP_CALL svp_video_render_event(void);

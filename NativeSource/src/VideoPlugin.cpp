@@ -19,6 +19,7 @@ std::unordered_map<int, std::unique_ptr<svp::VideoSession>> sessions;
 uint64_t nextId = 1;
 static_assert(sizeof(SvpVideoStats) == 40, "Video stats ABI size mismatch");
 static_assert(sizeof(SvpVideoTimings) == 56, "Video timings ABI size mismatch");
+static_assert(sizeof(SvpVideoPerformance) == 64, "Video performance ABI size mismatch");
 void UNITY_INTERFACE_API deviceEvent(UnityGfxDeviceEventType event) {
     decltype(sessions) retired;
     {
@@ -123,3 +124,12 @@ int32_t SVP_CALL svp_video_get_timings(int32_t id, SvpVideoTimings* timings, uin
     return SVP_OK;
 }
 void* SVP_CALL svp_video_render_event() { return reinterpret_cast<void*>(render); }
+int32_t SVP_CALL svp_video_get_performance(int32_t id, SvpVideoPerformance* performance, uint32_t size) {
+    if (!performance || size != sizeof(SvpVideoPerformance)) return SVP_INVALID_ARGUMENT;
+    *performance = {};
+    std::lock_guard<std::mutex> guard(mutex);
+    const auto found = sessions.find(id);
+    if (found == sessions.end()) return SVP_INVALID_HANDLE;
+    *performance = found->second->performance();
+    return SVP_OK;
+}

@@ -13,6 +13,7 @@ Remaining before declaring a usable release: pixel color/orientation chart, reso
 ## M2 / Multi-stream and latency
 
 - Startup-stage diagnostics and conservative SDP fast start are implemented. Next optimize device pooling and GPU synchronization; add explicit decoder capability diagnostics.
+- Unreleased: decoder input-view/color-state caching and reusable Unity batch submission are implemented. Same-machine RTX 4080 measurements reduce 16-way main-thread submission from 37.31 to 18.08 microseconds (median of three per-run means); see Benchmark.md for full scope and throughput variability. Device pooling, GPU execution-time profiling and cross-vendor measurements remain open.
 - Short local 1/4/9/16 independent RTSP connection benchmarks are implemented and recorded in Benchmark.md. Sixteen-way decoding works, but the Unity 60 FPS / per-stream 25 FPS targets remain unmet. Next: real multiple sources, longer runs, profiling and repeatability. 32 x 720p15 remains a future stress tier.
 - Initial hardware: RTX 3050 Ti Laptop / Intel Iris Xe. Unity currently runs on NVIDIA.
 - Target 60 FPS in a simple Unity scene; measure CPU, video-engine utilization, render frame times, VRAM and frame drops.

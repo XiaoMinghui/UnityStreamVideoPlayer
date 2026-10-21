@@ -11,6 +11,14 @@ namespace StreamVideoPlayer
 {
     public enum VideoPlaybackState { Opening, Playing, Ended, Failed }
 
+    /// <summary>Cumulative CPU submission counters. Timings do not measure GPU execution or end-to-end latency.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct VideoPerformanceStatistics
+    {
+        public ulong ConversionAttempts, ConvertedFrames, WriterBusyDrops, ReaderBusySkips;
+        public ulong InputViewCreations, ConversionCpuUs, PresentCalls, PresentationCpuUs;
+    }
+
     /// <summary>Microseconds from native session construction. Zero means not reached, not zero duration.
     /// Presented means submitted to Unity's GPU context; it is not a screen/optical timestamp.</summary>
     [StructLayout(LayoutKind.Sequential)]
@@ -48,8 +56,10 @@ namespace StreamVideoPlayer
         private static readonly HashSet<VideoStreamSession> LiveSessions = new HashSet<VideoStreamSession>();
         private int handle;
         private CommandBuffer commands;
+        private IntPtr renderCallback;
         private RenderTexture texture;
         private bool timingsUnavailable;
+        private bool performanceUnavailable;
         private bool stopRequestUnavailable;
         public RenderTexture Texture => texture;
         /// <summary>Apply to RawImage.uvRect or material scale/offset when sampling Texture.</summary>
@@ -80,10 +90,10 @@ namespace StreamVideoPlayer
                 }) { name = "StreamVideoPlayer output", hideFlags = HideFlags.DontSave };
                 if (!texture.Create()) throw new InvalidOperationException("Could not allocate video output texture.");
                 Check(VideoNativeApi.svp_video_open(Encoding.UTF8.GetBytes(source + "\0"), texture.GetNativeTexturePtr(), out handle));
-                var callback = VideoNativeApi.svp_video_render_event();
-                if (callback == IntPtr.Zero) throw new InvalidOperationException("Native video render callback is unavailable.");
+                renderCallback = VideoNativeApi.svp_video_render_event();
+                if (renderCallback == IntPtr.Zero) throw new InvalidOperationException("Native video render callback is unavailable.");
                 commands = new CommandBuffer { name = "StreamVideoPlayer video present" };
-                commands.IssuePluginEvent(callback, handle);
+                commands.IssuePluginEvent(renderCallback, handle);
                 LiveSessions.Add(this);
             }
             catch (DllNotFoundException ex)
@@ -96,9 +106,18 @@ namespace StreamVideoPlayer
 
         public void Render()
         {
+            ValidateRenderTarget();
+            Graphics.ExecuteCommandBuffer(commands);
+        }
+        internal void ValidateRenderTarget()
+        {
             ThrowIfDisposed();
             if (!texture.IsCreated()) throw new InvalidOperationException("Video texture was lost. Dispose and recreate this session.");
-            Graphics.ExecuteCommandBuffer(commands);
+        }
+        internal void AppendRenderCommand(CommandBuffer buffer)
+        {
+            ThrowIfDisposed();
+            buffer.IssuePluginEvent(renderCallback, handle);
         }
         public VideoStatistics GetStatistics()
         {
@@ -139,6 +158,19 @@ namespace StreamVideoPlayer
             }
             LiveSessions.Remove(this);
         }
+        /// <summary>False when an older native DLL without performance counters is loaded.</summary>
+        public bool TryGetPerformanceStatistics(out VideoPerformanceStatistics performance)
+        {
+            ThrowIfDisposed();
+            performance = default;
+            if (performanceUnavailable) return false;
+            try
+            {
+                Check(VideoNativeApi.svp_video_get_performance(handle, out performance, (uint)Marshal.SizeOf<VideoPerformanceStatistics>()));
+                return true;
+            }
+            catch (EntryPointNotFoundException) { performanceUnavailable = true; return false; }
+        }
         /// <summary>Signals cancellation without waiting. Call on each session before disposing a batch.
         /// Dispose remains required. Older native libraries cancel during Dispose instead.</summary>
         public void RequestStop()
@@ -153,6 +185,7 @@ namespace StreamVideoPlayer
         }
         public static void DisposeAll()
         {
+            VideoStreamRenderBatch.DisposeAll();
             var sessions = new VideoStreamSession[LiveSessions.Count];
             LiveSessions.CopyTo(sessions);
             foreach (var session in sessions) session.RequestStop();

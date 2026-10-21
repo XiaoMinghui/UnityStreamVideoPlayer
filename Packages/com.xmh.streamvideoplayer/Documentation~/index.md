@@ -18,6 +18,10 @@ var stats = session.GetStatistics();
 session.Dispose();
 ```
 
+For a fixed group of streams, create `new VideoStreamRenderBatch(sessions)` once and call `batch.Render()` each Update. This submits one reusable Unity command buffer for the whole group. Dispose the batch before disposing the sessions. A batch does not own its sessions: closed members are safely skipped, and adding/replacing sessions requires a new batch. The video-wall sample uses batching by default; individual `session.Render()` remains supported.
+
+`session.TryGetPerformanceStatistics(out VideoPerformanceStatistics performance)` exposes cumulative input-view creations, converted frames, writer-busy drops, reader-busy skips, and CPU-side conversion/presentation elapsed microseconds. Use differences between snapshots for rates. A false return means the loaded native DLL predates these optional diagnostics. CPU-side submission time does not measure GPU execution time or end-to-end latency.
+
 Do not retain Texture after disposal. Dispose/recreate after device loss. Stop joins the native worker; network I/O cancellation uses a 5-second deadline, but DNS/driver stalls still need validation. Do not put production passwords into committed scene assets.
 
 Each session currently uses a separate hardware decoder device. Four-session reopen tests and short 1/4/9/16-session video-wall runs have passed functional checks against a local test source. The 16-session Unity run did not meet the 60 Unity FPS / 25 video FPS goals; capacity guarantees, end-to-end latency and long-term stability are not established. See the repository's Documentation/Benchmark.md for measured results and conditions. No CPU pixel upload/readback is used in production playback. GPU conversion and a GPU copy remain.

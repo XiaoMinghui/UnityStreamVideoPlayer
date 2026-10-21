@@ -2,6 +2,20 @@
 
 This report records observed local results, not release-wide support or performance guarantees.
 
+## Unreleased performance changes — current RTX 4080 machine
+
+- Native build and CTest: **4/4 passed**. Added optional performance ABI layout/argument checks; existing statistics/timing layouts and ABI version 1 remain unchanged.
+- Unity Mono development wall player: final build succeeded. Six sequential 16-session, 30-second before/after runs completed; full measurements and limitations are in Benchmark.md. Main-thread submission time improved, but a whole-player throughput or latency improvement has not been established.
+- Unity PlayMode in the isolated validation copy: **7/7 passed, zero skipped**. XML: `Builds/PerformanceValidation/Artifacts/unity-tests-50ca1c672bff4857bd872489b13796f4.xml`.
+- Installed updated native libraries into the actual project and refreshed the open Editor. Unity MCP then ran the current tests in that Editor: **7/7 passed, zero skipped**, 11.16 seconds; job `4eb5c7e35fa2499a94a0641f4864436c`. Coverage includes nonuniform decoded pixels, four-session batch rendering/dispose/reopen, queued stale handles, paused-renderer latest-frame behavior, input-view reuse and credential-safe failures.
+- Native resolution-change fixture: concatenated H.264 MPEG-TS segments, 1280x720 → 1920x1080 at 25 FPS. `VideoSmoke <fixture.ts> --resolution-change` passed with 66 decoded / 65 presented frames, four input views created, nonblack GPU readback and 30 ms stop. This validates a controlled local-file pool/processor change, not arbitrary real-camera renegotiation.
+- Native RTSP smoke: 15 decoded / 15 presented frames, two input views created, nonblack output, 45 ms stop.
+- Final native 16-stream harness: 15 seconds, 24.998–25.064 presented FPS, present-loop CPU P95 0.605 ms, process CPU 1.331% of machine, working set 555.6 MB, process local VRAM 1222.8 MB. This verifies native diagnostic reporting; it is not a Unity frame-rate result. Report: `Artifacts/performance/native-final-16/native-16.json`.
+- Current environment: Unity 2022.3.62f3c1, D3D11, RTX 4080, driver 32.0.16.1088, MSVC 19.34, Windows SDK 10.0.22621.0, pinned FFmpeg SDK from `BuildScripts/ffmpeg.lock.json`. Portable CMake 3.31.12 was downloaded and checksum-verified under ignored `ThirdParty~/cmake` because CMake was not installed with Visual Studio; pass its executable via `Build-Native.ps1 -CMakePath` on this machine.
+- Native DLL SHA-256: `FDBF410DE1B768100662401B2BDB82CAC0C11ECD4EDAEBEDD7E54DFCBA35BC20`.
+
+The sections below describe earlier preview.2/preview.3 laptop validation and are retained as historical records.
+
 ## Environment
 
 - Unity 2022.3.62f3c1, URP 14.0.12, Linear color, Windows x64, D3D11.

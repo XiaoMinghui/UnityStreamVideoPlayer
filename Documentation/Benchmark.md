@@ -1,5 +1,37 @@
 # Local performance measurements — preview.3, 2026-10-21
 
+## Unreleased performance follow-up — RTX 4080, 2026-10-21
+
+This follow-up uses a different PC from the preview.3 laptop below. It is a same-machine before/after comparison, not a cross-GPU speedup claim. The retained changes cache D3D11 input views/color state and submit the video wall through one reusable Unity command buffer. Native per-stream devices, keyed-mutex synchronization, GPU copies and explicit flushes are unchanged.
+
+Setup: Unity 2022.3.62f3c1, Windows x64 Mono development player, D3D11, RTX 4080 (driver 32.0.16.1088), 16 independent connections to the same local H.264 1920x1080 25 FPS source, GOP 25, 640x360 output per stream, 1920x1080 player window, 60 FPS cap. A separate validation project was used while the user's Editor remained open. Measurements are 30 seconds per process after startup/warm-up, alternating before/after for three pairs. The same final managed player was used for both modes: before loads the original `f990ab0` DLL and uses `-svp-individual-render`; after loads the updated DLL and uses batching. This is a combined-change comparison; it does not isolate the native cache's contribution to total process CPU.
+
+| Run | Mode | Mean main-thread submission µs/frame | Process CPU % of machine | Unity FPS | Per-stream presented FPS range | Peak working set MB |
+|---:|---|---:|---:|---:|---:|---:|
+| 1 | Before | 37.31 | 1.432 | 59.83 | 24.70–24.77 | 1085.1 |
+| 1 | After | 18.32 | 1.235 | 59.61 | 24.16–24.23 | 1102.7 |
+| 2 | Before | 37.40 | 1.464 | 59.91 | 24.72–24.79 | 1072.6 |
+| 2 | After | 18.08 | 1.159 | 59.99 | 24.99–24.99 | 751.8 |
+| 3 | Before | 36.85 | 1.261 | 59.87 | 24.67–24.73 | 1092.5 |
+| 3 | After | 17.46 | 0.986 | 59.85 | 24.66–24.73 | 1085.7 |
+
+The median of per-run mean submission times fell from **37.31 to 18.08 µs (51.5%)**, saving about **0.019 ms per Unity frame**. This measures the main-thread validation/command-buffer submission path, not the render thread or GPU execution. It does not imply a 52% increase in frame rate. Median process CPU changed from 1.432% to 1.159% of machine capacity, but memory/frame throughput varied substantially between runs; no stable whole-player CPU, memory, latency or capacity improvement is claimed. In particular, the first after-run presented fewer video frames than its before-run.
+
+All three after-runs recorded **zero new input views during steady state** (the original code creates one for every conversion attempt). The native resolution-change smoke decoded 66 frames across 1280x720 → 1920x1080 with four input views created, confirming that caches are rebuilt for the new pool/processor. CPU submission diagnostics are available through `TryGetPerformanceStatistics`; baseline DLLs return false and their missing counters must not be interpreted as measured zeros.
+
+Reports: `Artifacts/performance/final-before-{1,2,3}` and `final-after-{1,2,3}`. Final native DLL SHA-256: `FDBF410DE1B768100662401B2BDB82CAC0C11ECD4EDAEBEDD7E54DFCBA35BC20`. An exploratory three-output-surface mailbox was also tested (`unity-*-ab*` reports) and removed because it did not show a repeatable benefit. It is not part of the final change.
+
+To compare the submission modes in a current video-wall build:
+
+```powershell
+./BuildScripts/Test-VideoWall.ps1 -PlayerPath <player.exe> -Counts 16 -Seconds 30 -IndividualRendering -OutputDirectory Artifacts/individual
+./BuildScripts/Test-VideoWall.ps1 -PlayerPath <player.exe> -Counts 16 -Seconds 30 -OutputDirectory Artifacts/batched
+```
+
+To repeat the original before/after comparison, additionally pass `-NativePluginPath` with the corresponding original/updated DLL. Always keep other workload and publisher settings fixed and run sequentially.
+
+## Earlier preview.3 laptop measurements
+
 These are short development measurements on one laptop. They are not capacity guarantees, 24-hour results, or glass-to-glass latency measurements. The measured 16-stream Unity tier does **not** meet the intended steady 60 Unity FPS / 25 video FPS target.
 
 ## Method

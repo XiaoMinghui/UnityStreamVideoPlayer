@@ -10,6 +10,12 @@ Each video session creates a separate D3D11 device on Unity's DXGI adapter with 
 
 A shared BGRA8 render target uses IDXGIKeyedMutex. Both writer and reader acquire key 0 without a CPU wait, submit GPU work, flush and release key 0. A generation counter prevents displaying the same output twice. The producer overwrites the latest output, so a slow renderer does not grow a decoded-frame FIFO. The renderer copies into the Unity-owned texture only in a plugin render event. Contention drops/skips frames rather than waiting on the render thread. This still has GPU conversion/copy/synchronization overhead and is not a zero-copy claim.
 
+VideoProcessor input views are cached by the current decoder texture and array slice. The cache holds a COM reference to that texture, is bounded by its ArraySize, and is cleared when the texture or processor enumerator changes (including resolution changes). Input color-space state is updated only when its matrix/range changes; output color-space state is configured when the processor is created.
+
+`VideoStreamRenderBatch` records an immutable list of session render events into one reusable Unity command buffer. It submits that buffer once per `Render()` instead of calling `Graphics.ExecuteCommandBuffer` for every session. It does not merge native GPU flushes or share decoder devices. Native handles are still looked up at render time, so a disposed member cannot target a newly opened session. The batch does not own sessions; dispose it separately or use the global session cleanup, which retires batches first. Rebuild the batch when adding/replacing members.
+
+`SvpVideoPerformance` / `VideoPerformanceStatistics` expose cumulative conversion attempts/completions, writer-busy frame drops, reader-busy presentation skips, input-view creations, and CPU-side submission elapsed time. Snapshot fields can advance independently on the decoder/render threads. These times include CPU-side driver calls and are not GPU execution times or end-to-end latency. The optional export preserves ABI 1; managed callers return false when using an older native DLL.
+
 `LatestFrameSlot<T>` is separately tested infrastructure for future frame scheduling; current video presentation uses the shared texture and generation counter, not this C++ slot. Neither mechanism permits arbitrarily dropping reference-dependent compressed packets.
 
 ## Color and timing

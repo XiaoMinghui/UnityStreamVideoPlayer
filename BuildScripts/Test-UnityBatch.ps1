@@ -23,4 +23,4 @@ if (-not (Test-Path $results)) { throw "Unity produced no results. Inspect $log"
 [xml]$xml = Get-Content $results -Raw
 $summary = $xml.'test-run'
 [pscustomobject]@{ Result=$summary.result; Passed=$summary.passed; Failed=$summary.failed; Skipped=$summary.skipped; Results=$results } | Format-List
-if ($process.ExitCode -ne 0 -or [int]$summary.failed -gt 0 -or [int]$summary.passed -lt 6 -or [int]$summary.skipped -gt 0) { throw "Unity tests did not fully pass. Inspect $results and $log" }
+if ($process.ExitCode -ne 0 -or [int]$summary.failed -gt 0 -or [int]$summary.passed -lt 7 -or [int]$summary.skipped -gt 0) { throw "Unity tests did not fully pass. Inspect $results and $log" }

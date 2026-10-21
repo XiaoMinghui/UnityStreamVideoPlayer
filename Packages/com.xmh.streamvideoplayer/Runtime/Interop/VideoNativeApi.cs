@@ -20,6 +20,8 @@ namespace StreamVideoPlayer.Interop
         [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
         internal static extern NativeResult svp_video_get_timings(int handle, out VideoStartupTimings timings, uint size);
         [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+        internal static extern NativeResult svp_video_get_performance(int handle, out VideoPerformanceStatistics performance, uint size);
+        [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
         internal static extern NativeResult svp_video_get_error(int handle, StringBuilder buffer, uint size);
         [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
         internal static extern IntPtr svp_video_render_event();

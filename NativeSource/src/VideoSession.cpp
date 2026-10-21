@@ -4,6 +4,7 @@
 #include <chrono>
 #include <stdexcept>
 #include <algorithm>
+#include <vector>
 extern "C" {
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
@@ -21,6 +22,11 @@ int64_t nowUs() {
     return std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::steady_clock::now().time_since_epoch()).count();
 }
+struct CpuTimer {
+    std::atomic<uint64_t>& total;
+    int64_t start = nowUs();
+    ~CpuTimer() { total.fetch_add(static_cast<uint64_t>(nowUs() - start), std::memory_order_relaxed); }
+};
 void check(HRESULT hr, const char* stage) {
     if (FAILED(hr)) throw std::runtime_error(std::string(stage) + " (HRESULT " + std::to_string(hr) + ")");
 }
@@ -117,10 +123,16 @@ std::string VideoSession::error() const {
 SvpVideoStats VideoSession::stats() const {
     return {decoded_.load(), presented_.load(), dropped_.load(), state_.load(), errorCode_.load(), width_.load(), height_.load()};
 }
+SvpVideoPerformance VideoSession::performance() const {
+    return {conversionAttempts_.load(), produced_.load(), writerBusyDrops_.load(), readerBusySkips_.load(),
+        inputViewCreations_.load(), conversionCpuUs_.load(), presentCalls_.load(), presentationCpuUs_.load()};
+}
 void VideoSession::present(ID3D11DeviceContext* unityContext) {
+    ++presentCalls_;
+    CpuTimer timer{presentationCpuUs_};
     if (produced_.load() == lastPresented_) return;
     const auto hr = readerMutex_->AcquireSync(0, 0);
-    if (hr == WAIT_TIMEOUT) return;
+    if (hr == WAIT_TIMEOUT) { ++readerBusySkips_; return; }
     if (hr != S_OK) { fail("Acquire shared texture for display", static_cast<int>(hr)); return; }
     const auto generation = produced_.load();
     if (generation != lastPresented_) {
@@ -211,6 +223,9 @@ void VideoSession::decode() {
     ComPtr<ID3D11VideoProcessorEnumerator> enumerator;
     ComPtr<ID3D11VideoProcessor> processor;
     ComPtr<ID3D11VideoProcessorOutputView> output;
+    ComPtr<ID3D11Texture2D> cachedInputTexture;
+    std::vector<ComPtr<ID3D11VideoProcessorInputView>> inputViews;
+    unsigned configuredMatrix = ~0u, configuredRange = ~0u;
     int configuredWidth = 0, configuredHeight = 0;
     int64_t firstPts = AV_NOPTS_VALUE, playbackStart = 0;
     auto convert = [&]() {
@@ -225,6 +240,8 @@ void VideoSession::decode() {
             while (!stop_ && nowMs() < due) std::this_thread::sleep_for(std::chrono::milliseconds(2));
         }
         if (stop_) return;
+        ++conversionAttempts_;
+        CpuTimer timer{conversionCpuUs_};
         auto* inputTexture = reinterpret_cast<ID3D11Texture2D*>(frame->data[0]);
         D3D11_TEXTURE2D_DESC inputDesc{};
         inputTexture->GetDesc(&inputDesc);
@@ -234,7 +251,9 @@ void VideoSession::decode() {
              frame->colorspace != AVCOL_SPC_SMPTE170M && frame->colorspace != AVCOL_SPC_BT470BG))
             throw std::runtime_error("Only SDR BT.601/BT.709 video is supported");
         if (configuredWidth != frame->width || configuredHeight != frame->height) {
+            inputViews.clear(); cachedInputTexture.Reset();
             output.Reset(); processor.Reset(); enumerator.Reset();
+            configuredMatrix = configuredRange = ~0u;
             D3D11_VIDEO_PROCESSOR_CONTENT_DESC content{};
             content.InputFrameFormat = D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE;
             content.InputFrameRate = {30,1}; content.OutputFrameRate = {30,1};
@@ -252,22 +271,37 @@ void VideoSession::decode() {
             videoContext->VideoProcessorSetStreamSourceRect(processor.Get(), 0, TRUE, &source);
             videoContext->VideoProcessorSetStreamDestRect(processor.Get(), 0, TRUE, &destination);
             videoContext->VideoProcessorSetOutputTargetRect(processor.Get(), TRUE, &destination);
+            D3D11_VIDEO_PROCESSOR_COLOR_SPACE outputColor{};
+            outputColor.RGB_Range = 0; outputColor.Nominal_Range = 2;
+            videoContext->VideoProcessorSetOutputColorSpace(processor.Get(), &outputColor);
             configuredWidth = frame->width; configuredHeight = frame->height;
         }
-        D3D11_VIDEO_PROCESSOR_COLOR_SPACE inputColor{}, outputColor{};
+        D3D11_VIDEO_PROCESSOR_COLOR_SPACE inputColor{};
         inputColor.YCbCr_Matrix = frame->colorspace == AVCOL_SPC_BT709 ||
             (frame->colorspace == AVCOL_SPC_UNSPECIFIED && frame->height > 576) ? 1u : 0u;
         inputColor.Nominal_Range = frame->color_range == AVCOL_RANGE_JPEG ? 2u : 1u;
-        outputColor.RGB_Range = 0; outputColor.Nominal_Range = 2;
-        videoContext->VideoProcessorSetStreamColorSpace(processor.Get(), 0, &inputColor);
-        videoContext->VideoProcessorSetOutputColorSpace(processor.Get(), &outputColor);
-        ComPtr<ID3D11VideoProcessorInputView> input;
-        D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC inputView{};
-        inputView.ViewDimension = D3D11_VPIV_DIMENSION_TEXTURE2D;
-        inputView.Texture2D.ArraySlice = static_cast<UINT>(reinterpret_cast<uintptr_t>(frame->data[1]));
-        check(videoDevice->CreateVideoProcessorInputView(inputTexture, enumerator.Get(), &inputView, &input), "Create decoded frame view");
+        if (configuredMatrix != inputColor.YCbCr_Matrix || configuredRange != inputColor.Nominal_Range) {
+            videoContext->VideoProcessorSetStreamColorSpace(processor.Get(), 0, &inputColor);
+            configuredMatrix = inputColor.YCbCr_Matrix; configuredRange = inputColor.Nominal_Range;
+        }
+        // FFmpeg recycles array slices. Views belong to the texture AND enumerator;
+        // invalidate on pool/processor changes and retain only the current pool.
+        if (cachedInputTexture.Get() != inputTexture) {
+            inputViews.clear(); inputViews.resize(inputDesc.ArraySize);
+            cachedInputTexture = inputTexture;
+        }
+        const auto slice = reinterpret_cast<uintptr_t>(frame->data[1]);
+        if (slice >= inputViews.size()) throw std::runtime_error("Invalid decoded texture array slice");
+        auto& input = inputViews[slice];
+        if (!input) {
+            D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC inputView{};
+            inputView.ViewDimension = D3D11_VPIV_DIMENSION_TEXTURE2D;
+            inputView.Texture2D.ArraySlice = static_cast<UINT>(slice);
+            check(videoDevice->CreateVideoProcessorInputView(inputTexture, enumerator.Get(), &inputView, &input), "Create decoded frame view");
+            ++inputViewCreations_;
+        }
         const auto acquired = writerMutex_->AcquireSync(0, 0);
-        if (acquired == WAIT_TIMEOUT) { ++dropped_; return; }
+        if (acquired == WAIT_TIMEOUT) { ++writerBusyDrops_; ++dropped_; return; }
         if (acquired != S_OK) throw std::runtime_error("Acquire shared texture for decoding failed");
         D3D11_VIDEO_PROCESSOR_STREAM blit{};
         blit.Enable = TRUE; blit.pInputSurface = input.Get();

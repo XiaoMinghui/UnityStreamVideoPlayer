@@ -33,13 +33,18 @@ namespace StreamVideoPlayer.Development
             public double decodedFps, presentedFps, firstPresentedMs;
             public ulong droppedFrames;
             public bool skippedProbe;
+            public bool performanceAvailable;
+            public ulong writerBusyDrops, readerBusySkips, inputViewCreations;
+            public double conversionCpuMeanUs, presentationCpuMeanUs;
         }
         [Serializable] private sealed class Result
         {
             public bool success;
+            public bool batchRendering;
             public string error, gpu, unityVersion;
             public int sessions;
             public double measurementSeconds, unityFps, frameP95Ms, frameP99Ms, processCpuPercentOfMachine, peakWorkingSetMB, stopAllMs;
+            public double renderSubmissionMeanUs;
             public StreamResult[] streams;
         }
         private static int ArgumentInt(string[] args, string name, int fallback)
@@ -70,6 +75,8 @@ namespace StreamVideoPlayer.Development
             Application.runInBackground = true;
             QualitySettings.vSyncCount = 0; Application.targetFrameRate = 60;
             wall = GetComponent<VideoWallDemo>();
+            wall.BatchRendering = Array.IndexOf(args, "-svp-individual-render") < 0;
+            result.batchRendering = wall.BatchRendering;
             wall.streamCount = count;
             int sourceFlag = Array.IndexOf(args, "-svp-source");
             if (sourceFlag >= 0 && sourceFlag + 1 < args.Length) wall.source = args[sourceFlag + 1];
@@ -93,8 +100,14 @@ namespace StreamVideoPlayer.Development
             if (result.error != null) { wall.Stop(); Finish(output, result); yield break; }
             yield return new WaitForSecondsRealtime(2);
             var before = new VideoStatistics[count];
-            for (int i = 0; i < count; ++i) before[i] = wall.Sessions[i].GetStatistics();
+            var performanceBefore = new VideoPerformanceStatistics[count];
+            for (int i = 0; i < count; ++i)
+            {
+                before[i] = wall.Sessions[i].GetStatistics();
+                wall.Sessions[i].TryGetPerformanceStatistics(out performanceBefore[i]);
+            }
             var intervals = new List<double>(duration * 75);
+            double submissionBefore = wall.RenderSubmissionCpuMs;
             using (var process = Process.GetCurrentProcess())
             {
                 double cpuBefore = process.TotalProcessorTime.TotalSeconds;
@@ -118,6 +131,7 @@ namespace StreamVideoPlayer.Development
                 result.processCpuPercentOfMachine = (process.TotalProcessorTime.TotalSeconds - cpuBefore) / result.measurementSeconds / Environment.ProcessorCount * 100;
             }
             result.unityFps = intervals.Count / result.measurementSeconds;
+            result.renderSubmissionMeanUs = (wall.RenderSubmissionCpuMs - submissionBefore) * 1000 / Math.Max(1, intervals.Count);
             result.frameP95Ms = Percentile(intervals, .95); result.frameP99Ms = Percentile(intervals, .99);
             result.streams = new StreamResult[count];
             if (wall.Sessions.Count == count)
@@ -135,6 +149,17 @@ namespace StreamVideoPlayer.Development
                         droppedFrames = stats.DroppedFrames - before[i].DroppedFrames,
                         firstPresentedMs = timings.FirstPresentedUs / 1000.0, skippedProbe = timings.SkippedStreamProbe != 0
                     };
+                    var row = result.streams[i];
+                    row.performanceAvailable = session.TryGetPerformanceStatistics(out var performance);
+                    if (row.performanceAvailable)
+                    {
+                        var baseline = performanceBefore[i];
+                        row.writerBusyDrops = performance.WriterBusyDrops - baseline.WriterBusyDrops;
+                        row.readerBusySkips = performance.ReaderBusySkips - baseline.ReaderBusySkips;
+                        row.inputViewCreations = performance.InputViewCreations - baseline.InputViewCreations;
+                        row.conversionCpuMeanUs = (double)(performance.ConversionCpuUs - baseline.ConversionCpuUs) / Math.Max(1ul, performance.ConversionAttempts - baseline.ConversionAttempts);
+                        row.presentationCpuMeanUs = (double)(performance.PresentationCpuUs - baseline.PresentationCpuUs) / Math.Max(1ul, performance.PresentCalls - baseline.PresentCalls);
+                    }
                 }
             clock.Restart(); wall.Stop(); result.stopAllMs = clock.Elapsed.TotalMilliseconds;
             result.success = result.error == null;

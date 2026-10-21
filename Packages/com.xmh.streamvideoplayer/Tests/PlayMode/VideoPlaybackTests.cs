@@ -75,14 +75,15 @@ namespace StreamVideoPlayer.Tests
         {
             string source = Source();
             for (int i = 0; i < 4; ++i) Open(source);
+            using var batch = new VideoStreamRenderBatch(sessions);
             float deadline = Time.realtimeSinceStartup + 20;
             bool complete = false;
             while (!complete && Time.realtimeSinceStartup < deadline)
             {
                 complete = true;
+                batch.Render();
                 foreach (var session in sessions)
                 {
-                    session.Render();
                     var stats = session.GetStatistics();
                     Assert.AreNotEqual(VideoPlaybackState.Failed, stats.State, session.GetError());
                     complete &= stats.PresentedFrames >= 10;
@@ -90,10 +91,48 @@ namespace StreamVideoPlayer.Tests
                 yield return null;
             }
             Assert.IsTrue(complete, "Four independent decoders did not all produce frames.");
+            // Submit first, then retire a handle while the render event may still be queued.
+            batch.Render();
+            sessions[0].Dispose();
+            for (int i = 0; i < 3; ++i) { batch.Render(); yield return null; }
+            for (int i = 1; i < sessions.Count; ++i)
+                Assert.AreNotEqual(VideoPlaybackState.Failed, sessions[i].GetStatistics().State, sessions[i].GetError());
             foreach (var session in sessions) session.RequestStop();
             foreach (var session in sessions) { session.Dispose(); session.Dispose(); }
             sessions.Clear();
-            yield return WaitForFrames(Open(source), 5);
+            var replacement = Open(source);
+            for (int i = 0; i < 3; ++i) { batch.Render(); yield return null; }
+            Assert.AreEqual(0ul, replacement.GetStatistics().PresentedFrames, "A stale batch rendered a replacement session.");
+            yield return WaitForFrames(replacement, 5);
+        }
+        [UnityTest]
+        public IEnumerator PausedRendererSkipsOldFramesAndReusesInputViews()
+        {
+            var session = Open(Source());
+            yield return WaitForFrames(session, 30);
+            // Drain the final queued event from WaitForFrames before taking the paused baseline.
+            yield return null;
+            yield return null;
+            Assert.IsTrue(session.TryGetPerformanceStatistics(out var before), "Current native performance API is required.");
+            Assert.AreEqual(64, System.Runtime.InteropServices.Marshal.SizeOf<VideoPerformanceStatistics>());
+            var presentedBefore = session.GetStatistics().PresentedFrames;
+            // Decode continues while Unity deliberately submits no presentation events.
+            yield return new WaitForSecondsRealtime(1);
+            Assert.IsTrue(session.TryGetPerformanceStatistics(out var after));
+            Assert.Greater(after.ConvertedFrames, before.ConvertedFrames + 5, "Producer stalled behind a paused renderer.");
+            Assert.Less(after.InputViewCreations - before.InputViewCreations, after.ConvertedFrames - before.ConvertedFrames,
+                "Decoder input views were recreated per frame instead of reused.");
+            Assert.AreEqual(presentedBefore, session.GetStatistics().PresentedFrames);
+            // Stop production and allow submitted GPU work to settle, then consume its latest frame.
+            session.RequestStop();
+            yield return new WaitForSecondsRealtime(0.2f);
+            yield return WaitForFrames(session, presentedBefore + 1);
+            session.TryGetPerformanceStatistics(out var finalPerformance);
+            var finalStats = session.GetStatistics();
+            Assert.AreEqual(finalPerformance.ConvertedFrames - finalStats.PresentedFrames + finalPerformance.WriterBusyDrops,
+                finalStats.DroppedFrames, "Presentation did not jump directly to the newest available generation.");
+            for (int i = 0; i < 5; ++i) { session.Render(); yield return null; }
+            Assert.AreEqual(finalStats.PresentedFrames, session.GetStatistics().PresentedFrames, "Old mailbox slots were replayed after the newest frame.");
         }
         [UnityTest]
         public IEnumerator ConnectionFailureIsReportedWithoutCredentials()

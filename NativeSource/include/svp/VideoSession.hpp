@@ -19,6 +19,7 @@ public:
     void present(ID3D11DeviceContext* unityContext);
     SvpVideoStats stats() const;
     SvpVideoTimings timings() const;
+    SvpVideoPerformance performance() const;
     std::string error() const;
 private:
     void run() noexcept;
@@ -41,6 +42,8 @@ private:
     std::atomic<bool> stop_{false};
     std::atomic<int64_t> deadlineMs_{0};
     std::atomic<uint64_t> decoded_{0}, produced_{0}, presented_{0}, dropped_{0};
+    std::atomic<uint64_t> conversionAttempts_{0}, writerBusyDrops_{0}, readerBusySkips_{0}, inputViewCreations_{0};
+    std::atomic<uint64_t> conversionCpuUs_{0}, presentCalls_{0}, presentationCpuUs_{0};
     uint64_t lastPresented_ = 0; // render thread only
     std::atomic<int> state_{SVP_VIDEO_OPENING}, errorCode_{0}, width_{0}, height_{0};
     mutable std::mutex errorMutex_;

@@ -3,7 +3,8 @@
 #include <iostream>
 using Microsoft::WRL::ComPtr;
 int main(int argc, char** argv) {
-    if (argc != 2) { std::cerr << "Usage: VideoSmoke <file-or-rtsp-url>\n"; return 2; }
+    const bool expectResolutionChange = argc == 3 && std::string(argv[2]) == "--resolution-change";
+    if (argc != 2 && !expectResolutionChange) { std::cerr << "Usage: VideoSmoke <file-or-rtsp-url> [--resolution-change]\n"; return 2; }
     try {
         ComPtr<ID3D11Device> device;
         ComPtr<ID3D11DeviceContext> context;
@@ -19,14 +20,24 @@ int main(int argc, char** argv) {
         const auto start = std::chrono::steady_clock::now();
         auto session = std::make_unique<svp::VideoSession>(device.Get(), target.Get(), argv[1]);
         SvpVideoStats stats{};
+        int initialWidth = 0, initialHeight = 0;
+        bool resolutionChanged = false;
+        uint64_t presentedAtChange = 0;
         while (std::chrono::steady_clock::now() - start < std::chrono::seconds(15)) {
             session->present(context.Get());
             stats = session->stats();
             if (stats.state == SVP_VIDEO_FAILED) throw std::runtime_error(session->error());
-            if (stats.presented_frames >= 15) break;
+            if (stats.presented_frames > 0 && initialWidth == 0) { initialWidth = stats.width; initialHeight = stats.height; }
+            if (initialWidth != 0 && !resolutionChanged && (stats.width != initialWidth || stats.height != initialHeight)) {
+                resolutionChanged = true; presentedAtChange = stats.presented_frames;
+            }
+            if ((!expectResolutionChange || resolutionChanged) && stats.presented_frames >= presentedAtChange + 15) break;
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
         if (stats.presented_frames < 15) throw std::runtime_error("Not enough hardware frames presented");
+        if (expectResolutionChange && (!resolutionChanged || stats.presented_frames < presentedAtChange + 15))
+            throw std::runtime_error("Resolution change did not continue presenting");
+        const auto performance = session->performance();
         desc.BindFlags = 0; desc.Usage = D3D11_USAGE_STAGING; desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
         ComPtr<ID3D11Texture2D> staging;
         if (FAILED(device->CreateTexture2D(&desc, nullptr, &staging))) return 5;
@@ -45,7 +56,8 @@ int main(int argc, char** argv) {
         session.reset();
         const auto stopMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - stopStart).count();
         std::cout << "PASS decoded=" << stats.decoded_frames << " presented=" << stats.presented_frames
-            << " source=" << stats.width << "x" << stats.height << " pixelSum=" << luminance << " stopMs=" << stopMs << '\n';
+            << " source=" << stats.width << "x" << stats.height << " pixelSum=" << luminance << " stopMs=" << stopMs
+            << " viewsCreated=" << performance.input_view_creations << " resolutionChanged=" << resolutionChanged << '\n';
         return stopMs < 6000 ? 0 : 7;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }
