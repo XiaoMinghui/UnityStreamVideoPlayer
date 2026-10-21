@@ -1,0 +1,13 @@
+name: Native core
+on: [push, pull_request]
+jobs:
+  ownership-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure portable core tests
+        run: cmake -S NativeSource -B build-core -DSVP_BUILD_PLUGIN=OFF -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build-core --parallel
+      - name: Test
+        run: ctest --test-dir build-core --output-on-failure --timeout 30

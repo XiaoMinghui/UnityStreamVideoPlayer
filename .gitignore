@@ -1,0 +1,36 @@
+# Unity generated files (keep embedded Packages in source control).
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Bb]uild/
+/[Bb]uilds/
+/[Aa]rtifacts/
+# Unity Test Framework temporary scenes.
+/Assets/InitTestScene*.unity
+/Assets/InitTestScene*.unity.meta
+/.vs/
+/.idea/
+*.csproj
+*.sln
+*.slnx
+*.user
+*.suo
+*.pidb
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+sysinfo.txt
+crashlytics-build.properties
+/NativeSource/build*/
+/ThirdParty~/
+# Native binaries are built locally; release archives will include audited binaries.
+/Packages/com.xmh.streamvideoplayer/Runtime/Plugins/Windows/x86_64/*.dll
+/Packages/com.xmh.streamvideoplayer/Runtime/Plugins/Windows/x86_64/*.dll.meta
+# Local camera addresses/credentials must never be committed.
+*.local.json
+.env
+.env.*
+!.env.example

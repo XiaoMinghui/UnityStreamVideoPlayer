@@ -1,0 +1,6 @@
+{
+  "name": "StreamVideoPlayer.Editor",
+  "rootNamespace": "StreamVideoPlayer.Editor",
+  "references": ["StreamVideoPlayer.Runtime"],
+  "includePlatforms": ["Editor"]
+}

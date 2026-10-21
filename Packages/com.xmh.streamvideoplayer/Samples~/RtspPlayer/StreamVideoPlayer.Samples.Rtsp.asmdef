@@ -1,0 +1,4 @@
+{
+  "name": "StreamVideoPlayer.Samples.Rtsp",
+  "references": ["StreamVideoPlayer.Runtime"]
+}

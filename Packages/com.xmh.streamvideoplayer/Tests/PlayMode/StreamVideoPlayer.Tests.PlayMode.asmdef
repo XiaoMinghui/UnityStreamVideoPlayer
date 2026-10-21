@@ -1,0 +1,8 @@
+{
+  "name": "StreamVideoPlayer.Tests.PlayMode",
+  "rootNamespace": "StreamVideoPlayer.Tests",
+  "references": ["StreamVideoPlayer.Runtime"],
+  "optionalUnityReferences": ["TestAssemblies"],
+  "defineConstraints": ["UNITY_INCLUDE_TESTS"],
+  "autoReferenced": false
+}

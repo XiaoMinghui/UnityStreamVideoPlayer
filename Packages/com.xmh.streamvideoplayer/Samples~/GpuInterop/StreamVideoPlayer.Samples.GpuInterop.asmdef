@@ -1,0 +1,5 @@
+{
+  "name": "StreamVideoPlayer.Samples.GpuInterop",
+  "rootNamespace": "StreamVideoPlayer.Samples",
+  "references": ["StreamVideoPlayer.Runtime"]
+}

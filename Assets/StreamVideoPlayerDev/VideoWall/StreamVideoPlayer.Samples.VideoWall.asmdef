@@ -1,0 +1,4 @@
+{
+  "name": "StreamVideoPlayer.Samples.VideoWall",
+  "references": ["StreamVideoPlayer.Runtime"]
+}

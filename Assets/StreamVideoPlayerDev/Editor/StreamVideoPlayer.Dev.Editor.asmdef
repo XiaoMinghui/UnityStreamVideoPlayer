@@ -1,0 +1,5 @@
+{
+  "name": "StreamVideoPlayer.Dev.Editor",
+  "references": ["StreamVideoPlayer.Runtime", "StreamVideoPlayer.Samples.GpuInterop", "StreamVideoPlayer.Samples.Rtsp", "StreamVideoPlayer.Samples.VideoWall", "StreamVideoPlayer.Dev"],
+  "includePlatforms": ["Editor"]
+}

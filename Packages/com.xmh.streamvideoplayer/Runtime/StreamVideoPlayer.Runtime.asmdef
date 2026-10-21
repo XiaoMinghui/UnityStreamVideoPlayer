@@ -1,0 +1,7 @@
+{
+  "name": "StreamVideoPlayer.Runtime",
+  "rootNamespace": "StreamVideoPlayer",
+  "references": [],
+  "autoReferenced": true,
+  "allowUnsafeCode": false
+}

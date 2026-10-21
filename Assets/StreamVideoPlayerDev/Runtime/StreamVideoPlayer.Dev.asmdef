@@ -1,0 +1,5 @@
+{
+  "name": "StreamVideoPlayer.Dev",
+  "rootNamespace": "StreamVideoPlayer.Development",
+  "references": ["StreamVideoPlayer.Runtime", "StreamVideoPlayer.Samples.VideoWall"]
+}

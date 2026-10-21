@@ -1,0 +1,42 @@
+{
+  "name": "com.xmh.streamvideoplayer",
+  "version": "0.1.0-preview.3",
+  "displayName": "StreamVideoPlayer",
+  "description": "Experimental Windows D3D11 RTSP/TCP H.264 hardware video player with FFmpeg, GPU conversion, shared textures and independent sessions. Requires locally built native libraries.",
+  "unity": "2022.3",
+  "author": {
+    "name": "xmh",
+    "url": "https://github.com/XiaoMinghui"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/XiaoMinghui/UnityStreamVideoPlayer.git"
+  },
+  "keywords": [
+    "video",
+    "streaming",
+    "rtsp",
+    "ffmpeg"
+  ],
+  "dependencies": {
+    "com.unity.modules.imgui": "1.0.0"
+  },
+  "samples": [
+    {
+      "displayName": "GPU Interop Diagnostic",
+      "description": "Verifies native D3D11 render events and Unity texture lifetime without a camera or FFmpeg. Add GpuInteropDemo to an empty GameObject and enter Play mode.",
+      "path": "Samples~/GpuInterop"
+    },
+    {
+      "displayName": "RTSP Player",
+      "description": "RTSP/TCP H.264 player with source input and statistics. Add RtspPlayerDemo to an empty GameObject; requires the optional native FFmpeg module.",
+      "path": "Samples~/RtspPlayer"
+    },
+    {
+      "displayName": "RTSP Video Wall",
+      "description": "1/4/9/16 independent RTSP sessions with GPU textures and per-stream FPS. Add VideoWallDemo to an empty GameObject.",
+      "path": "Samples~/VideoWall"
+    }
+  ]
+}
